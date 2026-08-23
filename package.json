@@ -1,6 +1,6 @@
 {
   "name": "pi-cometix-footer",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Cometix-style single-line footer for pi — model, path, git, tokens, cost & task time at a glance.",
   "keywords": [
@@ -16,21 +16,23 @@
   ],
   "license": "MIT",
   "author": "Xichun123",
-  "homepage": "https://github.com/Xichun123/pi-cometix-footer#readme",
+  "homepage": "https://github.com/pastchais/pi-cometix-footer#readme",
   "bugs": {
-    "url": "https://github.com/Xichun123/pi-cometix-footer/issues"
+    "url": "https://github.com/pastchais/pi-cometix-footer/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Xichun123/pi-cometix-footer.git"
+    "url": "git+https://github.com/pastchais/pi-cometix-footer.git"
   },
   "scripts": {
     "test": "node --test *.test.ts"
   },
   "files": [
     "index.ts",
+    "config.ts",
     "duration.ts",
     "tps.ts",
+    "pi-cometix-footer.example.json",
     "assets",
     "README.md",
     "LICENSE"

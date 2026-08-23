@@ -8,60 +8,21 @@
  *   Model | Directory | Git(branch + ✓/●/⚠ + ↑n/↓n) | Context% | Tokens | Cost | Task time + TPS
  *
  * Toggle with /cometix-footer (on by default), or toggle TPS with
- * /cometix-footer tps. /reload to pick up edits.
+ * /cometix-footer tps. Customize via ~/.pi/agent/pi-cometix-footer.json.
  */
 
 import type { ExtensionAPI, ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth, type TUI } from "@earendil-works/pi-tui";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { loadFooterConfig, type FooterConfig } from "./config.ts";
 import { formatDuration } from "./duration.ts";
 import { formatTps, TpsTracker } from "./tps.ts";
-
-// --- icon set ---------------------------------------------------------------
-// Set to "emoji" if your terminal has no Nerd Font (icons become 🤖 📁 🌿 ⚡ 📊 💰).
-const ICON_MODE: "nerd" | "emoji" = "nerd";
-const DEFAULT_SHOW_TPS = true;
-
-const cp = (n: number) => String.fromCodePoint(n);
-const ICONS = {
-	nerd: {
-		model: "\ue22c", // nf-fae-pi
-		dir: "\ue285", // nf-fae-bigger
-		git: cp(0xf02a2), // nf-md-git
-		ctx: "\uf49b", // nf-md-counter
-		usage: cp(0xf0a9e), // nf-md-chart_bar
-		cost: cp(0xf01c1), // nf-md-currency_usd
-		duration: cp(0xf0109), // nf-md-camera_timer
-	},
-	emoji: {
-		model: "🤖",
-		dir: "📁",
-		git: "🌿",
-		ctx: "⚡️",
-		usage: "📊",
-		cost: "💰",
-		duration: "⏱️",
-	},
-}[ICON_MODE];
 
 // --- ANSI helpers (truecolor terminal) --------------------------------------
 const RESET = "\x1b[0m";
 // bold + color, then reset
 const paint = (code: number, s: string) => `\x1b[1;${code}m${s}${RESET}`;
 const SEG = `\x1b[2m | ${RESET}`; // dim separator
-
-// 16-color bright codes used by the cometix theme
-const C = {
-	cyan: 96, // model, usage
-	yellow: 93, // dir icon
-	green: 92, // dir text
-	blue: 94, // git
-	magenta: 95, // context
-	cost: 33, // cost (yellow, normal)
-	duration: 95, // task duration
-	red: 91,
-	warn: 93,
-};
 
 // --- formatters -------------------------------------------------------------
 function fmtCwd(cwd: string, home: string | undefined): string {
@@ -113,13 +74,28 @@ function parseGitPorcelain(out: string): GitStatus {
 
 // --- extension --------------------------------------------------------------
 export default function (pi: ExtensionAPI) {
-	// User preferences: footer and TPS are on by default.
-	let userEnabled = true;
-	let tpsEnabled = DEFAULT_SHOW_TPS;
+	let cfg: FooterConfig = loadFooterConfig().config;
+	let userEnabled = cfg.enabled;
+	let tpsEnabled = cfg.showTps;
 	let timer: ReturnType<typeof setInterval> | undefined;
 	let elapsedTimer: ReturnType<typeof setInterval> | undefined;
 	let unsubBranch: (() => void) | undefined;
 	let requestFooterRender: (() => void) | undefined;
+
+	function icons() {
+		return cfg.icons[cfg.iconMode];
+	}
+
+	function colors() {
+		return cfg.colors;
+	}
+
+	function applyLoadedConfig(loaded: ReturnType<typeof loadFooterConfig>, ctx?: { ui?: { notify: (msg: string, level: string) => void } }): void {
+		cfg = loaded.config;
+		userEnabled = cfg.enabled;
+		tpsEnabled = cfg.showTps;
+		if (loaded.warning) ctx?.ui?.notify(`Cometix footer config: ${loaded.warning}`, "warning");
+	}
 
 	// Latest response throughput, measured after the first streamed output token.
 	const tpsTracker = new TpsTracker();
@@ -135,7 +111,6 @@ export default function (pi: ExtensionAPI) {
 		data: { dirty: false, conflicts: false, ahead: 0, behind: 0 },
 	};
 	let gitInFlight = false;
-	const GIT_TTL = 3000;
 
 	function stopElapsedTicker(): void {
 		if (elapsedTimer) clearInterval(elapsedTimer);
@@ -186,7 +161,7 @@ export default function (pi: ExtensionAPI) {
 			// periodic refresh for dirty / ahead / behind
 			timer = setInterval(() => {
 				void refreshGit(ctx.cwd, footerData.getGitBranch()).then(() => tui.requestRender());
-			}, GIT_TTL);
+			}, cfg.gitTtlMs);
 
 			return {
 				invalidate() {},
@@ -201,11 +176,13 @@ export default function (pi: ExtensionAPI) {
 				render(width: number): string[] {
 					// trigger async refresh if stale (non-blocking)
 					const now = Date.now();
-					if (now - gitCache.ts > GIT_TTL) {
+					if (now - gitCache.ts > cfg.gitTtlMs) {
 						void refreshGit(ctx.cwd, footerData.getGitBranch()).then(() => tui.requestRender());
 					}
 
 					const home = process.env.HOME || process.env.USERPROFILE;
+					const ICONS = icons();
+					const C = colors();
 
 					// model (+ thinking level, like pi's native "gpt-5.5 • xhigh")
 					const modelId = ctx.model?.name || ctx.model?.id || "no-model";
@@ -355,6 +332,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		// Re-install each session with a fresh ctx so model/sessionManager stay current.
+		applyLoadedConfig(loadFooterConfig({ cwd: ctx.cwd }), ctx);
 		latestTps = undefined;
 		tpsTracker.start();
 		taskStartedAt = undefined;
@@ -365,10 +343,25 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("cometix-footer", {
-		description: "Toggle cometix-style footer, or TPS with /cometix-footer tps",
+		description: "Toggle cometix-style footer, TPS, or reload config",
 		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") return;
 			const [action, value] = args.trim().toLowerCase().split(/\s+/);
+			if (action === "reload") {
+				applyLoadedConfig(loadFooterConfig({ cwd: ctx.cwd }), ctx);
+				if (userEnabled) installFooter(ctx);
+				else {
+					ctx.ui.setFooter(undefined);
+					if (timer) clearInterval(timer);
+					timer = undefined;
+					stopElapsedTicker();
+					unsubBranch?.();
+					unsubBranch = undefined;
+				}
+				requestFooterRender?.();
+				ctx.ui.notify(`Cometix footer config reloaded (${cfg.iconMode}${tpsEnabled ? ", tps" : ""})`, "info");
+				return;
+			}
 			if (action === "tps") {
 				if (value === "on") tpsEnabled = true;
 				else if (value === "off") tpsEnabled = false;
@@ -378,7 +371,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (action) {
-				ctx.ui.notify("Usage: /cometix-footer [tps [on|off]]", "warning");
+				ctx.ui.notify("Usage: /cometix-footer [tps [on|off] | reload]", "warning");
 				return;
 			}
 

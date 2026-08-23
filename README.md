@@ -35,14 +35,10 @@ Segments are bold, separated by dim ` | `, with Nerd Font icons (emoji fallback 
 
 ## Install
 
-```bash
-pi install npm:pi-cometix-footer
-```
-
-Or from git:
+Install from this fork (not the upstream npm package):
 
 ```bash
-pi install git:github.com/Xichun123/pi-cometix-footer
+pi install git:github.com/pastchais/pi-cometix-footer
 ```
 
 Then in pi:
@@ -51,13 +47,14 @@ Then in pi:
 /reload
 ```
 
-Footer and TPS are **on by default**. Toggle the footer or TPS independently:
+Footer and TPS are **on by default**. Toggle the footer or TPS independently, or reload JSON config:
 
 ```text
 /cometix-footer
 /cometix-footer tps
 /cometix-footer tps on
 /cometix-footer tps off
+/cometix-footer reload
 ```
 
 TPS uses the final output-token count divided by the elapsed time from the first streamed output delta to response completion, so time to first token is excluded. It is omitted when a provider does not stream output deltas or report valid output-token usage.
@@ -69,31 +66,62 @@ TPS uses the final output-token count divided by the elapsed time from the first
 
 ## Customize
 
-Edit the installed package (or a local clone), then `/reload`.
+Do **not** edit `index.ts` for personal tweaks. Write JSON config instead.
 
-| Knob | Where | Purpose |
+Precedence, later wins:
+
+1. Built-in defaults
+2. `~/.pi/agent/pi-cometix-footer.json`
+3. Project `.pi/pi-cometix-footer.json` (walks up from cwd)
+4. Environment variables
+
+Session start and `/cometix-footer reload` re-read these files.
+
+```json
+{
+  "iconMode": "nerd",
+  "showTps": true,
+  "enabled": true,
+  "gitTtlMs": 3000,
+  "icons": {
+    "nerd": { "model": "π" },
+    "emoji": { "model": "🤖" }
+  },
+  "colors": {
+    "cyan": 96,
+    "yellow": 93,
+    "green": 92,
+    "blue": 94,
+    "magenta": 95,
+    "cost": 33,
+    "duration": 95,
+    "red": 91,
+    "warn": 93
+  }
+}
+```
+
+All keys are optional; omitted fields keep defaults. Icon maps merge per key.
+
+| Knob | JSON / env | Purpose |
 | --- | --- | --- |
-| `ICON_MODE` | top of `index.ts` | `"nerd"` (default) or `"emoji"` if no Nerd Font |
-| `DEFAULT_SHOW_TPS` | top of `index.ts` | show latest-response TPS by default (`true`) |
-| `ICONS.nerd.*` | icon map | per-segment Nerd Font codepoints |
-| `C.*` | color map | 16-color SGR codes per segment |
-| `GIT_TTL` | near git cache | git status refresh interval (ms, default `3000`) |
+| `iconMode` | `PI_COMETIX_ICON_MODE` | `"nerd"` (default) or `"emoji"` if no Nerd Font |
+| `showTps` | `PI_COMETIX_SHOW_TPS` | show latest-response TPS by default |
+| `enabled` | `PI_COMETIX_ENABLED` | install footer on session start |
+| `gitTtlMs` | `PI_COMETIX_GIT_TTL` | git status refresh interval (ms, default `3000`) |
+| `icons.nerd.*` / `icons.emoji.*` | — | per-segment glyphs |
+| `colors.*` | — | 16-color SGR codes per segment |
+
+See `pi-cometix-footer.example.json`.
 
 Nerd Font cheatsheet: <https://www.nerdfonts.com/cheat-sheet>
-
-Local install for hacking:
-
-```bash
-git clone https://github.com/Xichun123/pi-cometix-footer.git
-pi install ./pi-cometix-footer
-```
 
 ---
 
 ## Requirements
 
 - [pi](https://pi.dev) (peer: `@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`)
-- A [Nerd Font](https://www.nerdfonts.com/) in your terminal — or set `ICON_MODE = "emoji"`
+- A [Nerd Font](https://www.nerdfonts.com/) in your terminal — or set `"iconMode": "emoji"` in config
 
 ---
 

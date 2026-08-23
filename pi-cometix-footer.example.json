@@ -1,0 +1,22 @@
+{
+  "iconMode": "nerd",
+  "showTps": true,
+  "enabled": true,
+  "gitTtlMs": 3000,
+  "icons": {
+    "nerd": {
+      "model": "π"
+    }
+  },
+  "colors": {
+    "cyan": 96,
+    "yellow": 93,
+    "green": 92,
+    "blue": 94,
+    "magenta": 95,
+    "cost": 33,
+    "duration": 95,
+    "red": 91,
+    "warn": 93
+  }
+}
